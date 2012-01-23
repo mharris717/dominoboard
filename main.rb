@@ -8,7 +8,7 @@ def get_table
   rows = doc.xpath("//tr")
   puts rows.size
 
-  rows = rows.select { |x| x.text =~ /(mharris717|notadam|bossbri|lawnboy)/i }
+  rows = rows.select { |x| x.text =~ /(mharris717|notadam|bossbri|lawnboy|loweeel)/i }
 
 
   puts rows.size
