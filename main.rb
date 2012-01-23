@@ -86,6 +86,7 @@ class Game
   field :players, :type => Array
   field :game_dt, :type => Time
   field :game_log
+  field :filled, :type => Boolean
   #game-20120117-200600-93875d32
   def url
     "http://councilroom.com/game?game_id=#{game_id}.html"
@@ -97,9 +98,11 @@ class Game
     self.winner = bolds.find { |x| x.text =~ /#1 / }.text[3..-1]
     self.loser = bolds.find { |x| x.text =~ /#2 / }.text[3..-1]
     self.players = [winner,loser]
-    save!
   rescue => exp
     puts "error #{exp.message}"
+  ensure
+    self.filled = true
+    save!
   end
   def fill_game_dt!
     raise "bad" unless game_id =~ /game-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/
@@ -107,6 +110,7 @@ class Game
     self.game_dt = Time.local(*args)
   end
   before_create "fill_game_dt!"
+  scope :needs_fill, where(filled: nil)
   class << self
     def add!(game_id)
       game_id = game_id.strip
@@ -114,6 +118,24 @@ class Game
     end
     def add_player!(username)
 
+    end
+    def backfill!
+      Game.where(:winner => nil, :filled => nil).each do |g|
+        g.filled = true
+        g.save!
+      end
+    end
+    def fill_remote!
+      puts "Needs Fill #{needs_fill.count}"
+      needs_fill.limit(10).each { |g| g.fill_from_remote! }
+      fill_remote! if needs_fill.count > 0
+    end
+    def fill_remote_loop!
+      loop do
+        fill_remote!
+        puts "Fill Done"
+        sleep(5)
+      end
     end
   end
 end
@@ -136,13 +158,23 @@ class Player
     Game.where(:players => username).sort_by { |x| x.game_dt }
   end
   def to_s_history
-    games.map do |g|
-      opp = (g.players - ['mharris717']).first
+    wins = losses = 0
+    res = games.map do |g|
+      opp = (g.players - [username]).first
       rating = LatestRanking.get_rating(opp)
       won = (g.winner == username) ? "Won " : "Lost"
       dt = g.game_dt.strftime("%m/%d")
-      "#{dt} #{won} vs #{opp.rpad(20)} #{rating}"
-    end.join("\n")
+      if opp == 'mharris717'
+        nil
+      elsif rating && rating.split(" ").first.to_f >= 24
+        
+        (g.winner == username) ? wins += 1 : losses += 1
+        "#{dt} #{won} vs #{opp.rpad(20)} #{rating}"
+      else
+        nil
+      end
+    end.select { |x| x }.join("\n")
+    "#{username} #{wins}-#{losses}\n#{res}"
   end
 
   class << self
@@ -199,30 +231,53 @@ if false
   end
 end
 
-#log_table
-puts Ranking.count
-
-
-
-puts LatestRanking.batch_dt
-puts LatestRanking.rankings.size
-
-#Game.destroy_all
-
 if false
-  Game.add!("game-20120117-193312-3b4edf81")
-  g = Game.first
-  g.fill_from_remote!
-  puts g.players.inspect
+  log_table
+  puts Ranking.count
+
+
+
+  puts LatestRanking.batch_dt
+  puts LatestRanking.rankings.size
+
+  #Game.destroy_all
+
+  if false
+    Game.add!("game-20120117-193312-3b4edf81")
+    g = Game.first
+    g.fill_from_remote!
+    puts g.players.inspect
+  end
+
+  #p = Player.add_games!(:mharris717)
+
+  #puts Game.count
+  #puts Game.last.game_dt
+
+  puts Game.all.select { |x| x.winner }.size
+  puts Game.all.reject { |x| x.winner }.size
+
+  puts LatestRanking.get_rating('NotAdam')
+  File.create("games.txt",Player.new(:username => 'mharris717').to_s_history)
 end
 
-#p = Player.add_games!(:mharris717)
+def fixed_username(n)
+  if n =~ /(.*)(\u25B2|\u25BC)/i
+    $1.strip
+  else
+    n
+  end
+end
 
-#puts Game.count
-#puts Game.last.game_dt
-
-puts Game.all.select { |x| x.winner }.size
-puts Game.all.reject { |x| x.winner }.size
-
-puts LatestRanking.get_rating('NotAdam')
+c = "\u25B2"
+puts c
+names = LatestRanking.ranking_hash.keys.select { |x| x =~ /adam/i }
+puts names.inspect
 File.create("games.txt",Player.new(:username => 'mharris717').to_s_history)
+
+if false
+  Ranking.all.each do |r|
+    r.username = fixed_username(r.username)
+    r.save!
+  end
+end
