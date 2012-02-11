@@ -157,26 +157,38 @@ class Player
   def games
     Game.where(:players => username).sort_by { |x| x.game_dt }
   end
-  def to_s_history
+  def to_s_history_inner(min_rating)
     wins = losses = 0
     res = games.map do |g|
       opp = (g.players - [username]).first
       rating = LatestRanking.get_rating(opp)
-      won = (g.winner == username) ? "Won " : "Lost"
-      dt = g.game_dt.strftime("%m/%d")
-      if opp == 'mharris717'
-        nil
-      elsif rating && rating.split(" ").first.to_f >= 24
-        
-        (g.winner == username) ? wins += 1 : losses += 1
-        "#{dt} #{won} vs #{opp.rpad(20)} #{rating}"
+      if min_rating.nil? || rating.to_f >= min_rating
+        won = (g.winner == username) ? "Won " : "Lost"
+        dt = g.game_dt.strftime("%m/%d")
+        if opp == 'mharris717'
+          nil
+        #elsif rating && rating.split(" ").first.to_f >= 24
+        elsif true
+          (g.winner == username) ? wins += 1 : losses += 1
+          "#{dt} #{won} vs #{opp.rpad(20)} #{rating}"
+        else
+          nil
+        end
       else
         nil
       end
     end.select { |x| x }.join("\n")
-    "#{username} #{wins}-#{losses}\n#{res}"
+    "#{username} #{wins}-#{losses} Min: #{min_rating}\n#{res}"
   end
-
+  def to_s_history
+    res = []
+    res << to_s_history_inner(nil)
+    res << to_s_history_inner(10)
+    res << to_s_history_inner(15)
+    res << to_s_history_inner(24)
+    res << to_s_history_inner(30)
+    res.join("\n\n\n----------\n\n\n")
+  end
   class << self
     def add_games!(username)
       new(:username => username).add_games!
@@ -269,13 +281,40 @@ def fixed_username(n)
   end
 end
 
-c = "\u25B2"
-puts c
-names = LatestRanking.ranking_hash.keys.select { |x| x =~ /adam/i }
-puts names.inspect
-File.create("games.txt",Player.new(:username => 'mharris717').to_s_history)
+def our_names
+  %w(Loweeel NotAdam mharris717 lawnboy34 BossBri)
+end
+def get_our_games
+  our_names.each do |n|
+    Player.add_games!(n)
+  end
+end
+
+def write_games!
+  our_names.each do |n|
+    File.create("games/#{n}.txt",Player.new(:username => n).to_s_history)
+  end
+end
 
 if false
+  #log_table
+
+  #c = "\u25B2"
+  #puts c
+  #LatestRanking.instance!
+  names = LatestRanking.ranking_hash.keys.select { |x| x =~ /baxter/i }
+  puts names.inspect
+  File.create("games.txt",Player.new(:username => 'Loweeel').to_s_history)
+
+  if false
+    Ranking.all.each do |r|
+      r.username = fixed_username(r.username)
+      r.save!
+    end
+  end
+end
+
+def fix_usernames!
   Ranking.all.each do |r|
     r.username = fixed_username(r.username)
     r.save!
